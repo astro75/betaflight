@@ -74,6 +74,7 @@ static pthread_t tcpWorker, udpWorker, udpWorkerRC;
 static bool workerRunning = true;
 static udpLink_t stateLink, pwmLink, pwmRawLink, rcLink;
 static pthread_mutex_t updateLock;
+static uint64_t updateLockUntill = 0;
 static pthread_mutex_t mainLoopLock;
 static char simulator_ip[32] = "127.0.0.1";
 
@@ -595,7 +596,9 @@ static void pwmCompleteMotorUpdate(void)
     pwmPkt.motor_speed[2] = motorsPwm[3] / outScale;
 
     // get one "fdm_packet" can only send one "servo_packet"!!
-    if (pthread_mutex_trylock(&updateLock) != 0) return;
+    if (pthread_mutex_trylock(&updateLock) != 0 && micros64_real() < updateLockUntill) return;
+    // If gazebo is not running, try again in one second. Otherwise it will deadlock.
+    updateLockUntill = micros64_real() + 1000 * 1000; // 1 second
     udpSend(&pwmLink, &pwmPkt, sizeof(servo_packet));
 //    printf("[pwm]%u:%u,%u,%u,%u\n", idlePulse, motorsPwm[0], motorsPwm[1], motorsPwm[2], motorsPwm[3]);
     udpSend(&pwmRawLink, &pwmRawPkt, sizeof(servo_packet_raw));
